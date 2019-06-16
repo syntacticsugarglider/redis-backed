@@ -1,0 +1,15 @@
+image: syntacticsugarglider/vitruvia
+
+check:
+  script:
+    - cargo check
+
+docs:
+  stage: deploy
+  script:
+    - cargo rustdoc
+    - rm -rf public
+    - mv target/doc/ public
+  artifacts:
+    paths:
+      - public

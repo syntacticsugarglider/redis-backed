@@ -79,6 +79,20 @@ impl<T: Serialize + DeserializeOwned> List<T> {
             Ok(serde_cbor::from_slice(data.as_slice())?)
         })
     }
+    /// Sets the list element at `index` to `value`. See `index` for information on
+    /// time complexity and the behaviour of the `index` argument.
+    pub fn set_index(&mut self, index: i64, value: T) -> impl Future<Item = (), Error = Error> {
+        let key = self.key.clone();
+        let connection = self.connection.clone();
+        lazy(move || {
+            let _: String = redis::cmd("LSET")
+                .arg(key)
+                .arg(index)
+                .arg(serde_cbor::to_vec(&value)?)
+                .query(&mut *connection.write().unwrap())?;
+            Ok(())
+        })
+    }
     /// Returns elements of the list starting at `start` and stopping at `stop` which are zero-based indices
     /// permitting negative values in the same way as `index`. Note that the rightmost item in any range is included (i.e. range(0, 10) returns 11 elements).
     /// This operation is O(S+N) where S is the distance of the start offset from the head (for small lists) or nearest end (for large lists) and N is the number of
@@ -95,6 +109,22 @@ impl<T: Serialize + DeserializeOwned> List<T> {
             data.iter()
                 .map(|data| serde_cbor::from_slice(data.as_slice()).map_err(|err| Error::from(err)))
                 .collect::<Result<Vec<T>, Error>>()
+        })
+    }
+    /// Trims the list to the specified range of values. See `range` for the manner in which
+    /// the provided values behave. Please note that out-of-range indices will not result in an error being produced,
+    /// they will simply result in an empty list (if start > the true end) or a coercion to the index of the last element of the list
+    /// (for end > true end). `trim` is O(N) over the number of elements removed.
+    pub fn trim(&mut self, start: i64, stop: i64) -> impl Future<Item = (), Error = Error> {
+        let key = self.key.clone();
+        let connection = self.connection.clone();
+        lazy(move || {
+            let _: String = redis::cmd("LTRIM")
+                .arg(key)
+                .arg(start)
+                .arg(stop)
+                .query(&mut *connection.write().unwrap())?;
+            Ok(())
         })
     }
     /// Pushes an element to the front/right/tail/end of the list. This makes the provided
@@ -148,6 +178,38 @@ impl<T: Serialize + DeserializeOwned> List<T> {
                 .arg(serde_cbor::to_vec(&item)?)
                 .query(&mut *connection.write().unwrap())?;
             Ok(data)
+        })
+    }
+    /// Inserts `value` into the list before the first occurrence of `pivot`. This operation is O(N) over the number of elements
+    /// traversed before `pivot` is encountered. Returns a boolean value that is true if the operation completes successfully
+    /// and false if the pivot is never encountered.
+    pub fn insert_before(&mut self, pivot: T, value: T) -> impl Future<Item = bool, Error = Error> {
+        let key = self.key.clone();
+        let connection = self.connection.clone();
+        lazy(move || {
+            let data: i64 = redis::cmd("LINSERT")
+                .arg(key)
+                .arg("BEFORE")
+                .arg(serde_cbor::to_vec(&pivot)?)
+                .arg(serde_cbor::to_vec(&value)?)
+                .query(&mut *connection.write().unwrap())?;
+            Ok(data != -1)
+        })
+    }
+    /// Inserts `value` into the list after the first occurrence of `pivot`. This operation is O(N) over the number of elements
+    /// traversed before `pivot` is encountered. Returns a boolean value that is true if the operation completes successfully
+    /// and false if the pivot is never encountered.
+    pub fn insert_after(&mut self, pivot: T, value: T) -> impl Future<Item = bool, Error = Error> {
+        let key = self.key.clone();
+        let connection = self.connection.clone();
+        lazy(move || {
+            let data: i64 = redis::cmd("LINSERT")
+                .arg(key)
+                .arg("AFTER")
+                .arg(serde_cbor::to_vec(&pivot)?)
+                .arg(serde_cbor::to_vec(&value)?)
+                .query(&mut *connection.write().unwrap())?;
+            Ok(data != -1)
         })
     }
 }

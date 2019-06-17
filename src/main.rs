@@ -25,7 +25,7 @@ fn main() {
                         ()
                     })
                     .and_then(|mut list| {
-                        list.range(0, 500)
+                        list.len()
                             .map_err(|e| {
                                 eprintln!("{:?}", e);
                                 ()

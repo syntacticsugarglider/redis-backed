@@ -1,6 +1,9 @@
 /// A redis-backed list collection.
 pub mod list;
 
+/// A redis-backed set collection.
+pub mod set;
+
 use redis::{Connection, ConnectionLike, RedisError};
 
 use futures::{lazy, task::AtomicTask, Async, Future, Poll, Stream};
@@ -16,6 +19,7 @@ use crossbeam_channel::{unbounded, Receiver, TryRecvError};
 use crate::Error;
 
 pub use list::List;
+pub use set::Set;
 
 /// Generic notification events that apply to all types of keys.
 #[derive(Debug, Clone, Copy)]

@@ -1,4 +1,4 @@
-use redis_backed::collections::{Key, List};
+use redis_backed::collections::{Key, Set};
 use redis_backed::Database;
 use serde::{Deserialize, Serialize};
 
@@ -19,27 +19,20 @@ fn main() {
             })
             .and_then(|mut database| {
                 database
-                    .get::<List<Person>>("people")
+                    .get::<Set<Person>>("people")
                     .map_err(|e| {
                         eprintln!("{:?}", e);
                         ()
                     })
-                    .and_then(|list| {
-                        list.watch()
+                    .and_then(|mut set| {
+                        set.to_vec()
                             .map_err(|e| {
                                 eprintln!("{:?}", e);
                                 ()
                             })
-                            .and_then(|watcher| {
-                                watcher
-                                    .map_err(|e| {
-                                        eprintln!("{:?}", e);
-                                        ()
-                                    })
-                                    .for_each(|event| {
-                                        println!("{:?}", event);
-                                        Ok(())
-                                    })
+                            .and_then(|elements| {
+                                println!("{:?}", elements);
+                                Ok(())
                             })
                     })
             }),

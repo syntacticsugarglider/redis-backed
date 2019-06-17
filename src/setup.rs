@@ -1,4 +1,4 @@
-use redis_backed::collections::List;
+use redis_backed::collections::Set;
 use redis_backed::Database;
 use serde::{Deserialize, Serialize};
 
@@ -19,13 +19,13 @@ fn main() {
             })
             .and_then(|mut database| {
                 database
-                    .get::<List<Person>>("people")
+                    .get::<Set<Person>>("people")
                     .map_err(|e| {
                         eprintln!("{:?}", e);
                         ()
                     })
-                    .and_then(|mut list| {
-                        list.push_front(Person {
+                    .and_then(|mut set| {
+                        set.add(Person {
                             name: "john".to_owned(),
                             age: 52,
                         })

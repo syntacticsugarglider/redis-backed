@@ -1,8 +1,8 @@
-use redis_backed::collections::List;
+use redis_backed::collections::{Key, List};
 use redis_backed::Database;
 use serde::{Deserialize, Serialize};
 
-use futures::Future;
+use futures::{Future, Stream};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Person {
@@ -24,22 +24,23 @@ fn main() {
                         eprintln!("{:?}", e);
                         ()
                     })
-                    .and_then(|mut list| {
-                        list.remove(
-                            2,
-                            Person {
-                                name: "john".to_owned(),
-                                age: 52,
-                            },
-                        )
-                        .map_err(|e| {
-                            eprintln!("{:?}", e);
-                            ()
-                        })
-                        .and_then(|item| {
-                            println!("{:?}", item);
-                            Ok(())
-                        })
+                    .and_then(|list| {
+                        list.watch()
+                            .map_err(|e| {
+                                eprintln!("{:?}", e);
+                                ()
+                            })
+                            .and_then(|watcher| {
+                                watcher
+                                    .map_err(|e| {
+                                        eprintln!("{:?}", e);
+                                        ()
+                                    })
+                                    .for_each(|event| {
+                                        println!("{:?}", event);
+                                        Ok(())
+                                    })
+                            })
                     })
             }),
     );

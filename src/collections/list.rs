@@ -6,6 +6,7 @@ use crate::Error;
 
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
+    str::FromStr,
     marker::PhantomData,
     sync::{Arc, RwLock},
 };
@@ -21,10 +22,24 @@ pub struct List<T: Serialize + DeserializeOwned> {
     data: PhantomData<T>,
 }
 
+#[derive(Debug)]
+pub enum ListEvent {
+    E
+}
+
+impl FromStr for ListEvent {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(ListEvent::E)
+    }
+}
+
 impl<'a, T: Serialize + DeserializeOwned> Collection<'a> for List<T> {
+    type WatchEvent = ListEvent;
     fn get(key: String, connection: Connection) -> Result<List<T>, RedisError> {
         Ok(List {
-            key,
+            key: format!("_orm_list:{}", key),
             connection: Arc::new(RwLock::new(connection)),
             data: PhantomData,
         })

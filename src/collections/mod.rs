@@ -1,17 +1,95 @@
 mod list;
 
-use redis::{Connection, RedisError};
+use redis::{Connection, ConnectionLike, PubSub, RedisError};
 
-use futures::{lazy, Future};
+use futures::{lazy, task::AtomicTask, Async, Future, Poll, Stream};
 
-use std::sync::{Arc, RwLock};
+use std::{
+    fmt::Debug,
+    str::FromStr,
+    sync::{Arc, RwLock},
+};
+
+use crossbeam_channel::{unbounded, Receiver, TryRecvError};
 
 use crate::Error;
 
 pub use list::List;
 
+#[derive(Debug, Clone)]
+pub enum GenericWatchEvent {
+    Removed,
+    Renamed { from: String, to: String },
+}
+
+#[derive(Debug, Clone)]
+pub enum WatchEvent<T: Send + Debug> {
+    Generic(GenericWatchEvent),
+    TypeSpecific(T),
+}
+
+impl<T: Send + Debug + FromStr<Err = Error>> FromStr for WatchEvent<T> {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "del" => Ok(WatchEvent::Generic(GenericWatchEvent::Removed)),
+            _ => Ok(WatchEvent::TypeSpecific(s.parse::<T>()?)),
+        }
+    }
+}
+
+pub struct Watcher<T: Send + Debug> {
+    receiver: Receiver<WatchEvent<T>>,
+    task: Arc<AtomicTask>,
+}
+
+impl<'a, T: Send + Debug + FromStr<Err = Error> + 'static> Watcher<T> {
+    fn watch(conn: Arc<RwLock<Connection>>, key: String) -> Watcher<T> {
+        let (sender, receiver) = unbounded();
+        let task = Arc::new(AtomicTask::new());
+        let task_cloned = task.clone();
+        tokio::spawn(lazy(move || {
+            let mut conn = conn.write().unwrap();
+            let db = conn.get_db();
+            let mut pubsub = conn.as_pubsub();
+            pubsub
+                .subscribe(format!("__keyspace@{}__:{}", db, key))
+                .unwrap();
+            loop {
+                let message = pubsub.get_message().unwrap();
+                let payload: String = message.get_payload().unwrap();
+                let event = payload.parse::<WatchEvent<T>>().unwrap();
+                sender.send(event).unwrap();
+                task_cloned.notify();
+            }
+            Ok(())
+        }));
+        let watcher = Watcher { receiver, task };
+        watcher
+    }
+}
+
+impl<T: Send + Debug> Stream for Watcher<T> {
+    type Item = WatchEvent<T>;
+    type Error = Error;
+
+    fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
+        match self.receiver.try_recv() {
+            Ok(event) => Ok(Async::Ready(Some(event))),
+            Err(err) => match err {
+                TryRecvError::Disconnected => panic!("watcher channel disconnected"),
+                TryRecvError::Empty => {
+                    self.task.register();
+                    Ok(Async::NotReady)
+                }
+            }
+        }
+    }
+}
+
 /// A redis-backed data structure.
-pub trait Collection<'a> {
+pub trait Collection<'a>: Key<<Self as Collection<'a>>::WatchEvent> {
     #[doc(hidden)]
     fn get(key: String, connection: Connection) -> Result<Self, RedisError>
     where
@@ -20,21 +98,32 @@ pub trait Collection<'a> {
     fn key(&self) -> String;
     #[doc(hidden)]
     fn connection(&self) -> Arc<RwLock<Connection>>;
+    type WatchEvent: Send + 'static + Debug + FromStr<Err = Error>;
 }
 
-impl<'a> dyn Collection<'a> {
+pub trait Key<T: Send + Debug> {
+    fn remove(self) -> Box<dyn Future<Item = (), Error = Error> + Send>;
+    fn watch(&self) -> Box<dyn Future<Item = Watcher<T>, Error = Error> + Send>;
+}
+
+impl<'a, T> Key<T::WatchEvent> for T
+where
+    T: Collection<'a>,
+{
     /// Removes the collection from the database. This operation is O(1).
-    pub fn remove(self) -> impl Future<Item = (), Error = Error>
-    where
-        Self: Sized,
-    {
+    fn remove(self) -> Box<dyn Future<Item = (), Error = Error> + Send> {
         let key = self.key();
         let connection = self.connection();
-        lazy(move || {
+        Box::new(lazy(move || {
             let _: String = redis::cmd("DEL")
                 .arg(key)
                 .query(&mut *connection.write().unwrap())?;
             Ok(())
-        })
+        }))
+    }
+    fn watch(&self) -> Box<dyn Future<Item = Watcher<T::WatchEvent>, Error = Error> + Send> {
+        let connection = self.connection();
+        let key = self.key();
+        Box::new(lazy(move || Ok(Watcher::watch(connection, key))))
     }
 }

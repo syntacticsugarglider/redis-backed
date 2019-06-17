@@ -29,6 +29,12 @@ impl<'a, T: Serialize + DeserializeOwned> Collection<'a> for List<T> {
             data: PhantomData,
         })
     }
+    fn key(&self) -> String {
+        self.key.clone()
+    }
+    fn connection(&self) -> Arc<RwLock<Connection>> {
+        self.connection.clone()
+    }
 }
 
 impl<T: Serialize + DeserializeOwned> List<T> {

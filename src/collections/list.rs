@@ -62,6 +62,39 @@ impl<T: Serialize + DeserializeOwned> List<T> {
             }
         })
     }
+    /// Gets the element from the list at the provided index. The index is zero based
+    /// (0 is the first element and so on) and negative numbers can be used to designate
+    /// elements starting at the end/tail/right of the list (i.e. -1 is the last element and so forth).
+    /// This function runs in O(n) over the distance of the provided index from the nearest
+    /// end of the list i.e. getting the start or end of the list is O(1). If the specified element
+    /// does not exist or the index is out of range an error will be returned.
+    pub fn index(&mut self, index: i64) -> impl Future<Item = T, Error = Error> {
+        let key = self.key.clone();
+        let connection = self.connection.clone();
+        lazy(move || {
+            let data: Vec<u8> = redis::cmd("LINDEX")
+                .arg(key)
+                .arg(index)
+                .query(&mut *connection.write().unwrap())?;
+            Ok(serde_cbor::from_slice(data.as_slice())?)
+        })
+    }
+    /// Returns elements of the list starting at `start` and stopping at `stop` which are zero-based indices
+    /// permitting negative values in the same way as `index`. Note that the rightmost item in any range is included (i.e. range(0, 10) returns 11 elements).
+    pub fn range(&mut self, start: i64, stop: i64) -> impl Future<Item = Vec<T>, Error = Error> {
+        let key = self.key.clone();
+        let connection = self.connection.clone();
+        lazy(move || {
+            let data: Vec<Vec<u8>> = redis::cmd("LRANGE")
+                .arg(key)
+                .arg(start)
+                .arg(stop)
+                .query(&mut *connection.write().unwrap())?;
+            data.iter()
+                .map(|data| serde_cbor::from_slice(data.as_slice()).map_err(|err| Error::from(err)))
+                .collect::<Result<Vec<T>, Error>>()
+        })
+    }
     /// Pushes an element to the front/right/tail/end of the list. This makes the provided
     /// element the last item of the list.
     pub fn push_front(&mut self, item: T) -> impl Future<Item = (), Error = Error> {

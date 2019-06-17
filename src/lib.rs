@@ -24,6 +24,17 @@ pub enum Error {
     /// An error reported by the serialization process.
     #[fail(display = "A serialization error occurred")]
     SerializationError(#[cause] serde_cbor::error::Error),
+    /// An error produced in the handling of an invalid key notification.
+    #[fail(
+        display = "An unknown or invalid notification was received: no notification {} for redis-backed type {}",
+        notification, type_name
+    )]
+    InvalidNotification {
+        /// The relevant invalid notification.
+        notification: String,
+        /// The human-readable name of the type on which the invalid event occurred.
+        type_name: String,
+    },
 }
 
 impl From<redis::RedisError> for Error {

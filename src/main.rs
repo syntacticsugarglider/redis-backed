@@ -25,15 +25,21 @@ fn main() {
                         ()
                     })
                     .and_then(|mut list| {
-                        list.len()
-                            .map_err(|e| {
-                                eprintln!("{:?}", e);
-                                ()
-                            })
-                            .and_then(|item| {
-                                println!("{:?}", item);
-                                Ok(())
-                            })
+                        list.remove(
+                            2,
+                            Person {
+                                name: "john".to_owned(),
+                                age: 52,
+                            },
+                        )
+                        .map_err(|e| {
+                            eprintln!("{:?}", e);
+                            ()
+                        })
+                        .and_then(|item| {
+                            println!("{:?}", item);
+                            Ok(())
+                        })
                     })
             }),
     );

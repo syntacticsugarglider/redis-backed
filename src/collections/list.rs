@@ -136,4 +136,18 @@ impl<T: Serialize + DeserializeOwned> List<T> {
             Ok(data)
         })
     }
+    /// O(N) over the length of the list. Removes the first `count` occurrences of elements equal to `item` from the list. For positive `count` elements are removed moving from head to tail,
+    /// for negative `count` they are removed from tail to head, and for `count` equal to zero all elements are removed. This call returns the number of elements actually removed.
+    pub fn remove(&mut self, count: u32, item: T) -> impl Future<Item = u32, Error = Error> {
+        let key = self.key.clone();
+        let connection = self.connection.clone();
+        lazy(move || {
+            let data: u32 = redis::cmd("LREM")
+                .arg(key)
+                .arg(count)
+                .arg(serde_cbor::to_vec(&item)?)
+                .query(&mut *connection.write().unwrap())?;
+            Ok(data)
+        })
+    }
 }

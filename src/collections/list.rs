@@ -7,6 +7,7 @@ use crate::Error;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     marker::PhantomData,
+    str::FromStr,
     sync::{Arc, RwLock},
 };
 
@@ -21,10 +22,53 @@ pub struct List<T: Serialize + DeserializeOwned> {
     data: PhantomData<T>,
 }
 
+/// Events that can occur on a List.
+#[derive(Debug, Clone, Copy)]
+pub enum ListEvent {
+    /// The list was trimmed.
+    Trim,
+    /// An element was pushed onto the back of the list.
+    PushBack,
+    /// An element was pushed onto the front of the list.
+    PushFront,
+    /// An element was popped from the back of the list.
+    PopBack,
+    /// An element was popped from the front of the list.
+    PopFront,
+    /// An element was inserted into the list.
+    Insert,
+    /// An element was set by index in the list.
+    Set,
+    /// An element was removed from the list.
+    Remove,
+}
+
+impl FromStr for ListEvent {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ltrim" => Ok(ListEvent::Trim),
+            "lpush" => Ok(ListEvent::PushBack),
+            "rpush" => Ok(ListEvent::PushFront),
+            "lpop" => Ok(ListEvent::PopBack),
+            "rpop" => Ok(ListEvent::PopFront),
+            "linsert" => Ok(ListEvent::Insert),
+            "lset" => Ok(ListEvent::Set),
+            "lrem" => Ok(ListEvent::Remove),
+            _ => Err(Error::InvalidNotification {
+                type_name: "List".to_owned(),
+                notification: s.to_owned(),
+            }),
+        }
+    }
+}
+
 impl<'a, T: Serialize + DeserializeOwned> Collection<'a> for List<T> {
+    type WatchEvent = ListEvent;
     fn get(key: String, connection: Connection) -> Result<List<T>, RedisError> {
         Ok(List {
-            key,
+            key: format!("_orm_list:{}", key),
             connection: Arc::new(RwLock::new(connection)),
             data: PhantomData,
         })
